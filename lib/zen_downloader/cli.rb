@@ -61,7 +61,7 @@ module ZenDownloader
 
     desc "download URL", "Download all videos from a chapter"
     option :output, aliases: "-o", desc: "Output directory"
-    option :parallel, aliases: "-p", type: :numeric, default: 3, desc: "Number of parallel downloads"
+    option :parallel, aliases: "-p", type: :numeric, default: 6, desc: "Number of parallel downloads"
     def download(url)
       config = Config.new
       client = Client.new(config)
