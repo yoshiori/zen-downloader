@@ -1,0 +1,4 @@
+# Copy this file to ~/.zen-downloader.yml and fill in your credentials
+username: your_username
+password: your_password
+download_dir: ~/Downloads/zen
