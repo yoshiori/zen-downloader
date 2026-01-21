@@ -181,6 +181,7 @@ module ZenDownloader
               download_with_progress(task[:hls_url], task[:output_path], task[:duration]) do |progress|
                 bar.current = progress
               end
+              bar.current = bar.total
               bar.finish
             rescue StandardError => e
               mutex.synchronize do
