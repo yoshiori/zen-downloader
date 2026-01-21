@@ -15,21 +15,14 @@ module ZenDownloader
       @logged_in = false
     end
 
-    def login(target_url)
+    def login
       start_browser
 
-      # Step 1: Access target URL (will show login selection)
-      @browser.go_to(target_url)
+      # Step 1: Access ZEN ID login page directly
+      @browser.go_to("#{BASE_URL}/auth/zen_id")
       wait_for_page_load
 
-      # Step 2: Find and click ZEN ID login link
-      zen_link = @browser.at_css('a[href*="target_type=zen_id"]')
-      raise Error, "ZEN ID login link not found" unless zen_link
-
-      zen_link.click
-      wait_for_page_load
-
-      # Step 3: Submit email (first step of Auth0 Universal Login)
+      # Step 2: Submit email (first step of Auth0 Universal Login)
       email_field = wait_for_element('input[type="email"], input[name="username"]')
       raise Error, "Email field not found" unless email_field
 
@@ -38,7 +31,7 @@ module ZenDownloader
       submit_button.click
       wait_for_page_load
 
-      # Step 4: Submit password (second step)
+      # Step 3: Submit password (second step)
       password_field = wait_for_element('input[type="password"], input[name="password"]')
       raise Error, "Password field not found" unless password_field
 
@@ -50,26 +43,25 @@ module ZenDownloader
       # Check for authentication error
       check_authentication_error
 
-      # Step 5: Login successful
+      # Step 4: Login successful
       @logged_in = true
       current_page
     end
 
     def fetch_page(url)
-      return get_page(url) if logged_in?
-
-      login(url)
+      ensure_logged_in
+      get_page(url)
     end
 
     def fetch_course(course_id)
-      ensure_logged_in_for_course(course_id)
+      ensure_logged_in
 
       data = fetch_api("/v2/material/courses/#{course_id}?revision=1")
       Course.new(data)
     end
 
     def fetch_chapter(course_id, chapter_id)
-      ensure_logged_in(course_id, chapter_id)
+      ensure_logged_in
 
       # Fetch course info to get course title
       course_data = fetch_api("/v2/material/courses/#{course_id}?revision=1")
@@ -83,7 +75,7 @@ module ZenDownloader
     end
 
     def fetch_movie_info(course_id, chapter_id, movie_id)
-      ensure_logged_in(course_id, chapter_id)
+      ensure_logged_in
 
       data = fetch_api("/v2/material/courses/#{course_id}/chapters/#{chapter_id}/movies/#{movie_id}?revision=1")
       MovieInfo.new(data)
@@ -137,11 +129,7 @@ module ZenDownloader
 
     private
 
-    def ensure_logged_in_for_course(_course_id)
-      ensure_logged_in
-    end
-
-    def ensure_logged_in(_course_id = nil, _chapter_id = nil)
+    def ensure_logged_in
       return if logged_in?
 
       if session_valid?
@@ -149,7 +137,7 @@ module ZenDownloader
         return
       end
 
-      login("#{BASE_URL}/auth/zen_id")
+      login
     end
 
     def session_valid?

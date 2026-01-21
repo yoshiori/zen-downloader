@@ -12,11 +12,11 @@ module ZenDownloader
       puts "zen-downloader #{VERSION}"
     end
 
-    desc "login URL", "Test login to Zen University with a target URL"
-    def login(url)
+    desc "login", "Login to Zen University"
+    def login
       config = Config.new
       client = Client.new(config)
-      client.login(url)
+      client.login
       puts "Login successful!"
     rescue Error => e
       puts "Error: #{e.message}"
