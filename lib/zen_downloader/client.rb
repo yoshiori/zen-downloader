@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "ferrum"
+require "fileutils"
 require "json"
 
 module ZenDownloader
@@ -99,7 +100,34 @@ module ZenDownloader
     def ensure_logged_in(course_id, chapter_id)
       return if logged_in?
 
+      # Check if session is still valid
+      if session_valid?
+        @logged_in = true
+        return
+      end
+
       login("#{BASE_URL}/courses/#{course_id}/chapters/#{chapter_id}")
+    end
+
+    def session_valid?
+      start_browser
+      @browser.go_to(BASE_URL)
+      wait_for_page_load
+
+      # Try to fetch user info - if it succeeds, session is valid
+      result = @browser.evaluate_async(%(
+        fetch("#{API_URL}/v1/users?revision=2", {
+          credentials: "include"
+        })
+        .then(response => response.json())
+        .then(data => arguments[0](data))
+        .catch(err => arguments[0]({error: err.message}));
+      ), 10)
+
+      # If we get user data (not an error), session is valid
+      result.is_a?(Hash) && result["id"] && !result["error"]
+    rescue StandardError
+      false
     end
 
     def fetch_api(path)
@@ -125,8 +153,17 @@ module ZenDownloader
       @browser = Ferrum::Browser.new(
         headless: true,
         timeout: 30,
-        window_size: [1920, 1080]
+        window_size: [1920, 1080],
+        browser_options: {
+          "user-data-dir" => session_dir
+        }
       )
+    end
+
+    def session_dir
+      dir = File.expand_path("~/.zen-downloader/session")
+      FileUtils.mkdir_p(dir)
+      dir
     end
 
     def get_page(url)
