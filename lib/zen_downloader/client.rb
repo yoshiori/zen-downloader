@@ -1,10 +1,12 @@
 # frozen_string_literal: true
 
 require "ferrum"
+require "json"
 
 module ZenDownloader
   class Client
     BASE_URL = "https://www.nnn.ed.nico"
+    API_URL = "https://api.nnn.ed.nico"
 
     def initialize(config)
       @config = config
@@ -58,6 +60,27 @@ module ZenDownloader
       login(url)
     end
 
+    def fetch_chapter(course_id, chapter_id)
+      ensure_logged_in(course_id, chapter_id)
+
+      # Fetch course info to get course title
+      course_data = fetch_api("/v2/material/courses/#{course_id}?revision=1")
+      course = course_data["course"]
+
+      # Use subject_category title (e.g., "法学Ⅰ") as the main course name
+      course_title = course.dig("subject_category", "title") || course["title"]
+
+      data = fetch_api("/v2/material/courses/#{course_id}/chapters/#{chapter_id}?revision=1")
+      Chapter.new(data, course_id, course_title)
+    end
+
+    def fetch_movie_info(course_id, chapter_id, movie_id)
+      ensure_logged_in(course_id, chapter_id)
+
+      data = fetch_api("/v2/material/courses/#{course_id}/chapters/#{chapter_id}/movies/#{movie_id}?revision=1")
+      MovieInfo.new(data)
+    end
+
     def logged_in?
       @logged_in
     end
@@ -72,6 +95,29 @@ module ZenDownloader
     end
 
     private
+
+    def ensure_logged_in(course_id, chapter_id)
+      return if logged_in?
+
+      login("#{BASE_URL}/courses/#{course_id}/chapters/#{chapter_id}")
+    end
+
+    def fetch_api(path)
+      start_browser
+
+      result = @browser.evaluate_async(%(
+        fetch("#{API_URL}#{path}", {
+          credentials: "include"
+        })
+        .then(response => response.json())
+        .then(data => arguments[0](data))
+        .catch(err => arguments[0]({error: err.message}));
+      ), 15)
+
+      raise Error, "API error: #{result['error']}" if result.is_a?(Hash) && result["error"]
+
+      result
+    end
 
     def start_browser
       return if @browser
@@ -133,6 +179,77 @@ module ZenDownloader
 
     def url
       @browser.current_url
+    end
+  end
+
+  class Chapter
+    attr_reader :id, :title, :course_id, :course_title, :sections
+
+    def initialize(data, course_id, course_title = nil)
+      @course_id = course_id
+      @course_title = course_title
+      @data = data
+      chapter = data["chapter"]
+      @id = chapter["id"]
+      @title = chapter["title"]
+      @sections = chapter["sections"].map { |s| Section.new(s) }
+    end
+
+    def movies
+      @sections.select(&:movie?)
+    end
+  end
+
+  class Section
+    attr_reader :id, :title, :resource_type, :length, :content_url
+
+    def initialize(data)
+      @id = data["id"]
+      @title = data["title"]
+      @resource_type = data["resource_type"]
+      @length = data["length"]
+      @content_url = data["content_url"]
+    end
+
+    def movie?
+      @resource_type == "movie"
+    end
+
+    def formatted_length
+      return nil unless @length
+
+      minutes = @length / 60
+      seconds = @length % 60
+      format("%d:%02d", minutes, seconds)
+    end
+  end
+
+  class MovieInfo
+    attr_reader :id, :title, :length, :hls_url
+
+    def initialize(data)
+      @id = data["id"]
+      @title = data["title"]
+      @length = data["length"]
+      @hls_url = extract_hls_url(data)
+    end
+
+    def formatted_length
+      return nil unless @length
+
+      minutes = @length / 60
+      seconds = @length % 60
+      format("%d:%02d", minutes, seconds)
+    end
+
+    private
+
+    def extract_hls_url(data)
+      videos = data["videos"]
+      return nil unless videos&.any?
+
+      video = videos.first
+      video.dig("files", "hls", "url")
     end
   end
 end
