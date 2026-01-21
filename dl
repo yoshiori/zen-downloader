@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd "$(dirname "$0")"
+bundle exec ruby -Ilib -e "require 'zen_downloader'; ZenDownloader::CLI.start(['download', *ARGV])" -- "$@"
