@@ -139,11 +139,112 @@ RSpec.describe ZenDownloader::Client do
     end
   end
 
+  describe "#fetch_course" do
+    let(:course_id) { "1146336120" }
+    let(:course_data) do
+      {
+        "course" => {
+          "id" => course_id,
+          "title" => "法学概論",
+          "subject_category" => { "title" => "法学Ⅰ" },
+          "chapters" => [
+            { "id" => "1146336121", "title" => "第1回 法とは何か" },
+            { "id" => "1146336122", "title" => "第2回 憲法の基礎" }
+          ]
+        }
+      }
+    end
+
+    before do
+      allow(client).to receive(:logged_in?).and_return(true)
+      allow(mock_browser).to receive(:evaluate_async).and_return(course_data)
+    end
+
+    it "returns a Course object" do
+      course = client.fetch_course(course_id)
+      expect(course).to be_a(ZenDownloader::Course)
+    end
+
+    it "returns course with correct id and title" do
+      course = client.fetch_course(course_id)
+      expect(course.id).to eq(course_id)
+      expect(course.title).to eq("法学Ⅰ")
+    end
+
+    it "returns course with chapters" do
+      course = client.fetch_course(course_id)
+      expect(course.chapters.length).to eq(2)
+      expect(course.chapters.first.id).to eq("1146336121")
+      expect(course.chapters.first.title).to eq("第1回 法とは何か")
+    end
+  end
+
   describe "#quit" do
-    it "quits the browser" do
+    it "quits the browser and saves cookies" do
       client.send(:start_browser)
+      mock_cookies = instance_double(Ferrum::Cookies)
+      allow(mock_browser).to receive(:cookies).and_return(mock_cookies)
+      allow(mock_cookies).to receive(:all).and_return({})
       expect(mock_browser).to receive(:quit)
       client.quit
+    end
+  end
+end
+
+RSpec.describe ZenDownloader::Course do
+  let(:course_data) do
+    {
+      "course" => {
+        "id" => "1146336120",
+        "title" => "法学概論",
+        "subject_category" => {
+          "title" => "法学Ⅰ"
+        },
+        "chapters" => [
+          { "id" => "1146336121", "title" => "第1回 法とは何か" },
+          { "id" => "1146336122", "title" => "第2回 憲法の基礎" }
+        ]
+      }
+    }
+  end
+
+  describe "#initialize" do
+    it "extracts course id from data" do
+      course = described_class.new(course_data)
+      expect(course.id).to eq("1146336120")
+    end
+
+    it "uses subject_category title as the main title" do
+      course = described_class.new(course_data)
+      expect(course.title).to eq("法学Ⅰ")
+    end
+
+    it "falls back to course title when subject_category is missing" do
+      data = course_data.dup
+      data["course"] = data["course"].dup
+      data["course"]["subject_category"] = nil
+      course = described_class.new(data)
+      expect(course.title).to eq("法学概論")
+    end
+
+    it "creates ChapterInfo objects for each chapter" do
+      course = described_class.new(course_data)
+      expect(course.chapters.length).to eq(2)
+      expect(course.chapters).to all(be_a(ZenDownloader::ChapterInfo))
+    end
+  end
+end
+
+RSpec.describe ZenDownloader::ChapterInfo do
+  let(:chapter_data) do
+    { "id" => "1146336121", "title" => "第1回 法とは何か" }
+  end
+
+  describe "#initialize" do
+    it "extracts id and title from data" do
+      chapter_info = described_class.new(chapter_data)
+      expect(chapter_info.id).to eq("1146336121")
+      expect(chapter_info.title).to eq("第1回 法とは何か")
     end
   end
 end

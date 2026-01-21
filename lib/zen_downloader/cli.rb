@@ -39,12 +39,102 @@ module ZenDownloader
       client&.quit
     end
 
-    desc "list URL", "List videos in a chapter"
+    desc "list URL", "List videos in a chapter or course"
     def list(url)
       config = Config.new
       client = Client.new(config)
 
-      course_id, chapter_id = parse_chapter_url(url)
+      parsed = parse_url(url)
+
+      case parsed[:type]
+      when :course
+        list_course(client, parsed[:course_id])
+      when :chapter
+        list_chapter(client, parsed[:course_id], parsed[:chapter_id])
+      end
+    rescue Error => e
+      puts "Error: #{e.message}"
+      exit 1
+    ensure
+      client&.quit
+    end
+
+    desc "verify", "Verify session status and cookie persistence"
+    def verify
+      config = Config.new
+      client = Client.new(config)
+
+      puts "Checking session validity..."
+      valid = client.send(:session_valid?)
+      puts "Session valid: #{valid}"
+
+      if valid
+        puts "\nSession is valid. No login needed."
+      else
+        puts "\nSession is invalid. Checking cookies in browser..."
+        cookies = client.instance_variable_get(:@browser)&.cookies&.all || {}
+        puts "Cookies in memory: #{cookies.keys}"
+        auth_cookies = cookies.select { |name, _| name.to_s.include?("auth") || name.to_s.include?("session") || name.to_s.include?("zane") }
+        puts "Auth cookies: #{auth_cookies.keys}"
+      end
+    rescue Error => e
+      puts "Error: #{e.message}"
+      exit 1
+    ensure
+      client&.quit
+    end
+
+    desc "download URL", "Download all videos from a chapter or course"
+    option :output, aliases: "-o", desc: "Output directory"
+    option :parallel, aliases: "-p", type: :numeric, default: 6, desc: "Number of parallel downloads"
+    def download(url)
+      config = Config.new
+      client = Client.new(config)
+
+      parsed = parse_url(url)
+      output_dir = options[:output] || config.download_dir
+      output_dir = File.expand_path(output_dir)
+      parallel_count = options[:parallel]
+
+      case parsed[:type]
+      when :course
+        download_course(client, parsed[:course_id], output_dir, parallel_count)
+      when :chapter
+        download_chapter(client, parsed[:course_id], parsed[:chapter_id], output_dir, parallel_count)
+      end
+    rescue Error => e
+      puts "Error: #{e.message}"
+      exit 1
+    ensure
+      client&.quit
+    end
+
+    default_task :version
+
+    private
+
+    def parse_url(url)
+      if (match = url.match(%r{/courses/(\d+)/chapters/(\d+)}))
+        { type: :chapter, course_id: match[1], chapter_id: match[2] }
+      elsif (match = url.match(%r{/courses/(\d+)}))
+        { type: :course, course_id: match[1] }
+      else
+        raise Error, "Invalid URL: #{url}"
+      end
+    end
+
+    def list_course(client, course_id)
+      course = client.fetch_course(course_id)
+
+      puts "Course: #{course.title}"
+      puts "=" * 50
+      course.chapters.each_with_index do |chapter, i|
+        puts "#{i + 1}. #{chapter.title}"
+        puts "   ID: #{chapter.id}"
+      end
+    end
+
+    def list_chapter(client, course_id, chapter_id)
       chapter = client.fetch_chapter(course_id, chapter_id)
 
       puts "Course: #{chapter.course_title}"
@@ -54,37 +144,36 @@ module ZenDownloader
         puts "#{i + 1}. #{movie.title} (#{movie.formatted_length})"
         puts "   ID: #{movie.id}"
       end
-    rescue Error => e
-      puts "Error: #{e.message}"
-      exit 1
-    ensure
-      client&.quit
     end
 
-    desc "download URL", "Download all videos from a chapter"
-    option :output, aliases: "-o", desc: "Output directory"
-    option :parallel, aliases: "-p", type: :numeric, default: 6, desc: "Number of parallel downloads"
-    def download(url)
-      config = Config.new
-      client = Client.new(config)
+    def download_course(client, course_id, output_dir, parallel_count)
+      course = client.fetch_course(course_id)
 
-      course_id, chapter_id = parse_chapter_url(url)
+      puts "Course: #{course.title}"
+      puts "Chapters: #{course.chapters.length}"
+      puts "Output: #{output_dir}"
+      puts "Parallel: #{parallel_count}"
+      puts "=" * 50
+
+      course.chapters.each_with_index do |chapter_info, i|
+        puts "\n[Chapter #{i + 1}/#{course.chapters.length}] #{chapter_info.title}"
+        puts "-" * 50
+        download_chapter(client, course_id, chapter_info.id, output_dir, parallel_count)
+      end
+
+      puts "\nAll chapters completed!"
+    end
+
+    def download_chapter(client, course_id, chapter_id, output_dir, parallel_count)
       chapter = client.fetch_chapter(course_id, chapter_id)
-
-      output_dir = options[:output] || config.download_dir
-      output_dir = File.expand_path(output_dir)
-      parallel_count = options[:parallel]
 
       # Create directory structure: output_dir/course_title/chapter_title
       course_dir = File.join(output_dir, sanitize_filename(chapter.course_title))
       chapter_dir = File.join(course_dir, sanitize_filename(chapter.title))
       FileUtils.mkdir_p(chapter_dir)
 
-      puts "Course: #{chapter.course_title}"
       puts "Chapter: #{chapter.title}"
       puts "Output: #{chapter_dir}"
-      puts "Parallel: #{parallel_count}"
-      puts "=" * 50
 
       # Prepare download tasks
       tasks = []
@@ -116,28 +205,12 @@ module ZenDownloader
       end
 
       if tasks.empty?
-        puts "\nNo videos to download."
+        puts "No videos to download."
       else
-        puts "\nDownloading #{tasks.length} videos..."
+        puts "Downloading #{tasks.length} videos..."
         download_parallel(tasks, parallel_count)
-        puts "\nAll downloads completed!"
+        puts "Downloads completed!"
       end
-    rescue Error => e
-      puts "Error: #{e.message}"
-      exit 1
-    ensure
-      client&.quit
-    end
-
-    default_task :version
-
-    private
-
-    def parse_chapter_url(url)
-      match = url.match(%r{/courses/(\d+)/chapters/(\d+)})
-      raise Error, "Invalid chapter URL: #{url}" unless match
-
-      [match[1], match[2]]
     end
 
     def sanitize_filename(name)

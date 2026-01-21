@@ -61,6 +61,13 @@ module ZenDownloader
       login(url)
     end
 
+    def fetch_course(course_id)
+      ensure_logged_in_for_course(course_id)
+
+      data = fetch_api("/v2/material/courses/#{course_id}?revision=1")
+      Course.new(data)
+    end
+
     def fetch_chapter(course_id, chapter_id)
       ensure_logged_in(course_id, chapter_id)
 
@@ -87,8 +94,41 @@ module ZenDownloader
     end
 
     def quit
-      @browser&.quit
+      if @browser
+        save_cookies
+        @browser.quit
+      end
       @browser = nil
+    end
+
+    def save_cookies
+      return unless @browser
+
+      cookies = @browser.cookies.all.values.map(&:to_h)
+      File.write(cookie_file, JSON.dump(cookies))
+    end
+
+    def load_cookies
+      return unless File.exist?(cookie_file)
+
+      cookies = JSON.parse(File.read(cookie_file))
+      cookies.each do |cookie|
+        @browser.cookies.set(
+          name: cookie["name"],
+          value: cookie["value"],
+          domain: cookie["domain"],
+          path: cookie["path"] || "/",
+          expires: cookie["expires"],
+          secure: cookie["secure"],
+          httponly: cookie["httpOnly"]
+        )
+      rescue StandardError
+        # Ignore invalid cookies
+      end
+    end
+
+    def cookie_file
+      File.join(session_dir, "cookies.json")
     end
 
     def current_page
@@ -97,20 +137,24 @@ module ZenDownloader
 
     private
 
-    def ensure_logged_in(course_id, chapter_id)
+    def ensure_logged_in_for_course(_course_id)
+      ensure_logged_in
+    end
+
+    def ensure_logged_in(_course_id = nil, _chapter_id = nil)
       return if logged_in?
 
-      # Check if session is still valid
       if session_valid?
         @logged_in = true
         return
       end
 
-      login("#{BASE_URL}/courses/#{course_id}/chapters/#{chapter_id}")
+      login("#{BASE_URL}/auth/zen_id")
     end
 
     def session_valid?
       start_browser
+      load_cookies
       @browser.go_to(BASE_URL)
       wait_for_page_load
 
@@ -125,7 +169,7 @@ module ZenDownloader
       ), 10)
 
       # If we get user data (not an error), session is valid
-      result.is_a?(Hash) && result["id"] && !result["error"]
+      result.is_a?(Hash) && (result["id"] || result["zane_user_id"]) && !result["error"]
     rescue StandardError
       false
     end
@@ -216,6 +260,26 @@ module ZenDownloader
 
     def url
       @browser.current_url
+    end
+  end
+
+  class Course
+    attr_reader :id, :title, :chapters
+
+    def initialize(data)
+      course = data["course"]
+      @id = course["id"]
+      @title = course.dig("subject_category", "title") || course["title"]
+      @chapters = course["chapters"].map { |c| ChapterInfo.new(c) }
+    end
+  end
+
+  class ChapterInfo
+    attr_reader :id, :title
+
+    def initialize(data)
+      @id = data["id"]
+      @title = data["title"]
     end
   end
 
