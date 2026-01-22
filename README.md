@@ -25,6 +25,9 @@ download_dir: ~/Videos/ZEN
 ## Usage
 
 ```bash
+# Download all videos from a course
+./dl https://www.nnn.ed.nico/courses/COURSE_ID
+
 # Download all videos from a chapter
 ./dl https://www.nnn.ed.nico/courses/COURSE_ID/chapters/CHAPTER_ID
 
@@ -36,8 +39,8 @@ download_dir: ~/Videos/ZEN
 ## Other Commands
 
 ```bash
-bin/zen-downloader list URL    # List videos in a chapter
-bin/zen-downloader login URL   # Test login
+bin/zen-downloader list URL    # List chapters in a course or videos in a chapter
+bin/zen-downloader login       # Test login
 bin/zen-downloader version     # Show version
 ```
 
