@@ -71,6 +71,19 @@ RSpec.describe ZenDownloader::ReferenceRenderer do
       expect(described_class.content_signature(images: a, text_length: 0))
         .to eq(described_class.content_signature(images: b, text_length: 0))
     end
+
+    it "does not raise on a malformed image URL" do
+      images = [{ "src" => "https://x/weird name [1].png?Policy=z" }]
+      expect { described_class.content_signature(images: images, text_length: 0) }
+        .not_to raise_error
+    end
+
+    it "still distinguishes malformed URLs by basename" do
+      a = [{ "src" => "https://x/weird a.png" }]
+      b = [{ "src" => "https://x/weird b.png" }]
+      expect(described_class.content_signature(images: a, text_length: 0))
+        .not_to eq(described_class.content_signature(images: b, text_length: 0))
+    end
   end
 
   describe ".build_slide_html" do

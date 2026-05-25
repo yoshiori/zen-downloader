@@ -34,8 +34,16 @@ module ZenDownloader
     # Image file names are content-addressed, so they stay constant even though
     # the signed CDN URL prefix changes on every request.
     def self.content_signature(images:, text_length:)
-      basenames = images.map { |img| File.basename(URI(img["src"].to_s).path) }.sort
+      basenames = images.map { |img| image_basename(img["src"].to_s) }.sort
       Digest::MD5.hexdigest("#{text_length}|#{basenames.join(',')}")
+    end
+
+    # Extract the file name from an image URL, tolerating URLs that aren't
+    # strictly valid (unescaped characters would otherwise raise).
+    def self.image_basename(src)
+      File.basename(URI(src).path)
+    rescue URI::InvalidURIError
+      File.basename(src.split(/[?#]/).first.to_s)
     end
 
     # Build a standalone HTML page that lays out each slide image on its own

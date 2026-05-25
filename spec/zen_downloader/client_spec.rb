@@ -197,6 +197,21 @@ RSpec.describe ZenDownloader::Client do
     end
   end
 
+  describe "#fetch_image (private)" do
+    let(:url) { "https://cdn-private.nnn.ed.nico/cff/abc/def/slide-private.png" }
+
+    it "returns the response body on success" do
+      stub_request(:get, url).to_return(status: 200, body: "PNGDATA")
+      expect(client.send(:fetch_image, url)).to eq("PNGDATA")
+    end
+
+    it "raises an error on a non-success response so a broken image is not written" do
+      stub_request(:get, url).to_return(status: 403, body: "denied")
+      expect { client.send(:fetch_image, url) }
+        .to raise_error(ZenDownloader::Error, /403/)
+    end
+  end
+
   describe "#quit" do
     it "quits the browser and saves cookies" do
       client.send(:start_browser)

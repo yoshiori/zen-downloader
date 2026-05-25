@@ -308,7 +308,7 @@ module ZenDownloader
       Dir.mktmpdir("zen_slides") do |tmp|
         images = images_info.each_with_index.map do |img, i|
           path = File.join(tmp, format("%03d.png", i + 1))
-          File.binwrite(path, Net::HTTP.get(URI(img["src"])))
+          File.binwrite(path, fetch_image(img["src"]))
           { path: path, w: img["w"], h: img["h"] }
         end
 
@@ -328,6 +328,17 @@ module ZenDownloader
           prefer_css_page_size: true
         )
       end
+    end
+
+    # Download a slide image, failing loudly instead of writing an error
+    # body (e.g. a 403/404 page) to disk and producing a corrupt PDF.
+    def fetch_image(url)
+      response = Net::HTTP.get_response(URI(url))
+      unless response.is_a?(Net::HTTPSuccess)
+        raise Error, "Failed to download image (HTTP #{response.code}): #{url}"
+      end
+
+      response.body
     end
 
     # Capture the current page as an A4 PDF (for HTML document references).
