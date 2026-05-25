@@ -241,6 +241,12 @@ RSpec.describe ZenDownloader::Client do
       stub_request(:get, final).to_return(status: 200, body: "PNGDATA")
       expect(client.send(:fetch_image, url)).to eq("PNGDATA")
     end
+
+    it "raises a clear error when a redirect has no location header" do
+      stub_request(:get, url).to_return(status: 302)
+      expect { client.send(:fetch_image, url) }
+        .to raise_error(ZenDownloader::Error, /location/i)
+    end
   end
 
   describe "#quit" do

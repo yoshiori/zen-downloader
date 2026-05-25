@@ -294,8 +294,10 @@ module ZenDownloader
       end
       @browser.execute("window.scrollTo(0, 0)")
       sleep 0.5
-    rescue StandardError
-      nil
+    rescue Ferrum::Error => e
+      # Best effort: render whatever loaded. Surface the browser error but
+      # let unexpected (non-Ferrum) errors propagate instead of hiding them.
+      warn "Warning: scrolling the reference page failed: #{e.message}"
     end
 
     # Snapshot the rendered reference page: its asset URLs, the private slide
@@ -356,7 +358,10 @@ module ZenDownloader
         end
         break unless response.is_a?(Net::HTTPRedirection)
 
-        uri = URI.join(uri, response["location"])
+        location = response["location"]
+        raise Error, "Redirected without a location header: #{uri}" unless location
+
+        uri = URI.join(uri, location)
       end
 
       unless response.is_a?(Net::HTTPSuccess)
