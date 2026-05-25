@@ -11,3 +11,7 @@ Gemfile.lock
 
 # Config with credentials
 .zen-downloader.yml
+
+# Claude Code (local / transient)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

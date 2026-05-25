@@ -87,6 +87,10 @@ module ZenDownloader
     desc "download URL", "Download all videos from a chapter or course"
     option :output, aliases: "-o", desc: "Output directory"
     option :parallel, aliases: "-p", type: :numeric, default: 6, desc: "Number of parallel downloads"
+    option :references, type: :boolean, default: true,
+                        desc: "Download lesson/movie reference materials as PDF (use --no-references to skip)"
+    option :references_only, type: :boolean, default: false,
+                            desc: "Download only reference PDFs (skip videos)"
     def download(url)
       config = Config.new
       client = Client.new(config)
@@ -175,6 +179,16 @@ module ZenDownloader
       puts "Chapter: #{chapter.title}"
       puts "Output: #{chapter_dir}"
 
+      download_videos(client, chapter, chapter_dir, parallel_count) unless options[:references_only]
+      return unless options[:references] || options[:references_only]
+
+      download_references(client, course_id, chapter_id, chapter, chapter_dir)
+    end
+
+    def download_videos(client, chapter, chapter_dir, parallel_count)
+      course_id = chapter.course_id
+      chapter_id = chapter.id
+
       # Prepare download tasks
       tasks = []
       chapter.movies.each_with_index do |movie, i|
@@ -211,6 +225,69 @@ module ZenDownloader
         download_parallel(tasks, parallel_count)
         puts "Downloads completed!"
       end
+    end
+
+    def download_references(client, course_id, chapter_id, chapter, chapter_dir)
+      sections = chapter.reference_sections
+
+      if sections.empty?
+        puts "No reference materials found."
+        return
+      end
+
+      puts "Downloading reference materials..."
+      seen_signatures = []
+      sections.each_with_index do |section, i|
+        references = client.fetch_section_references(course_id, chapter_id, section)
+        label = "[#{i + 1}/#{sections.length}] #{section.title}"
+
+        if references.empty?
+          puts "#{label} - No references, skipping..."
+          next
+        end
+
+        references.each_with_index do |reference, j|
+          download_reference(reference, section, i + 1, j, references.length, chapter_dir, label, client, seen_signatures)
+        end
+      end
+    end
+
+    def download_reference(reference, section, index, ref_index, ref_count, chapter_dir, label, client, seen_signatures)
+      filename = reference_filename(index, section.title, ref_index, ref_count)
+      output_path = File.join(chapter_dir, filename)
+
+      if File.exist?(output_path)
+        puts "#{label} - #{filename} already exists, skipping..."
+        return
+      end
+
+      result, signature = client.render_reference_to_pdf(reference, output_path, skip_signatures: seen_signatures)
+      if result == :duplicate
+        puts "#{label} - same material as an earlier section, skipping..."
+        return
+      end
+
+      seen_signatures << signature
+      puts "#{label} - saved #{filename} (#{result})"
+    rescue StandardError => e
+      puts "#{label} - failed: #{e.message}"
+    end
+
+    # Filesystems cap names at 255 bytes; keep the title well under that,
+    # leaving room for the index prefix, suffix and extension.
+    MAX_TITLE_BYTES = 200
+
+    def reference_filename(index, title, ref_index, ref_count)
+      suffix = ref_count > 1 ? "_#{ref_index + 1}" : ""
+      title = truncate_bytes(sanitize_filename(title), MAX_TITLE_BYTES)
+      format("%02d_%s%s.pdf", index, title, suffix)
+    end
+
+    # Truncate to at most max_bytes without splitting a multibyte character.
+    def truncate_bytes(str, max_bytes)
+      return str if str.bytesize <= max_bytes
+
+      str.byteslice(0, max_bytes).scrub("")
     end
 
     def sanitize_filename(name)

@@ -197,6 +197,58 @@ RSpec.describe ZenDownloader::Client do
     end
   end
 
+  describe "#fetch_movie_info caching" do
+    let(:movie_id) { "999" }
+    let(:movie_data) { { "id" => movie_id, "title" => "M", "videos" => [], "references" => [] } }
+
+    before do
+      allow(client).to receive(:logged_in?).and_return(true)
+      allow(mock_browser).to receive(:evaluate_async).and_return(movie_data)
+    end
+
+    it "fetches a given movie only once across repeated calls" do
+      client.fetch_movie_info("c", "ch", movie_id)
+      client.fetch_movie_info("c", "ch", movie_id)
+      expect(mock_browser).to have_received(:evaluate_async).once
+    end
+
+    it "fetches distinct movies separately" do
+      other = { "id" => "1000", "title" => "M2", "videos" => [], "references" => [] }
+      allow(mock_browser).to receive(:evaluate_async).and_return(movie_data, other)
+      client.fetch_movie_info("c", "ch", movie_id)
+      client.fetch_movie_info("c", "ch", "1000")
+      expect(mock_browser).to have_received(:evaluate_async).twice
+    end
+  end
+
+  describe "#fetch_image (private)" do
+    let(:url) { "https://cdn-private.nnn.ed.nico/cff/abc/def/slide-private.png" }
+
+    it "returns the response body on success" do
+      stub_request(:get, url).to_return(status: 200, body: "PNGDATA")
+      expect(client.send(:fetch_image, url)).to eq("PNGDATA")
+    end
+
+    it "raises an error on a non-success response so a broken image is not written" do
+      stub_request(:get, url).to_return(status: 403, body: "denied")
+      expect { client.send(:fetch_image, url) }
+        .to raise_error(ZenDownloader::Error, /403/)
+    end
+
+    it "follows redirects to the final image" do
+      final = "https://cdn-private.nnn.ed.nico/final/slide-private.png"
+      stub_request(:get, url).to_return(status: 302, headers: { "Location" => final })
+      stub_request(:get, final).to_return(status: 200, body: "PNGDATA")
+      expect(client.send(:fetch_image, url)).to eq("PNGDATA")
+    end
+
+    it "raises a clear error when a redirect has no location header" do
+      stub_request(:get, url).to_return(status: 302)
+      expect { client.send(:fetch_image, url) }
+        .to raise_error(ZenDownloader::Error, /location/i)
+    end
+  end
+
   describe "#quit" do
     it "quits the browser and saves cookies" do
       client.send(:start_browser)
