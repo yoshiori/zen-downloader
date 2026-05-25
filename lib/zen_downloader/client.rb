@@ -78,18 +78,24 @@ module ZenDownloader
       Chapter.new(data, course_id, course_title)
     end
 
+    # Memoized: a movie is fetched once per run even though both the video
+    # and reference phases ask for it.
     def fetch_movie_info(course_id, chapter_id, movie_id)
       ensure_logged_in
 
-      data = fetch_api("/v2/material/courses/#{course_id}/chapters/#{chapter_id}/movies/#{movie_id}?revision=1")
-      MovieInfo.new(data)
+      (@movie_info_cache ||= {})[movie_id] ||= begin
+        data = fetch_api("/v2/material/courses/#{course_id}/chapters/#{chapter_id}/movies/#{movie_id}?revision=1")
+        MovieInfo.new(data)
+      end
     end
 
     def fetch_lesson(course_id, chapter_id, lesson_id)
       ensure_logged_in
 
-      data = fetch_api("/v1/n_school/courses/#{course_id}/chapters/#{chapter_id}/lessons/#{lesson_id}?revision=1")
-      Lesson.new(data)
+      (@lesson_cache ||= {})[lesson_id] ||= begin
+        data = fetch_api("/v1/n_school/courses/#{course_id}/chapters/#{chapter_id}/lessons/#{lesson_id}?revision=1")
+        Lesson.new(data)
+      end
     end
 
     # Reference material lives in different places depending on section type.
