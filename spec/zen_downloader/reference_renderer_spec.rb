@@ -109,5 +109,9 @@ RSpec.describe ZenDownloader::ReferenceRenderer do
       html = described_class.build_slide_html(images)
       expect(html).to include("page-break-after:always")
     end
+
+    it "returns an empty string when there are no images" do
+      expect(described_class.build_slide_html([])).to eq("")
+    end
   end
 end

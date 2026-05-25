@@ -234,6 +234,13 @@ RSpec.describe ZenDownloader::Client do
       expect { client.send(:fetch_image, url) }
         .to raise_error(ZenDownloader::Error, /403/)
     end
+
+    it "follows redirects to the final image" do
+      final = "https://cdn-private.nnn.ed.nico/final/slide-private.png"
+      stub_request(:get, url).to_return(status: 302, headers: { "Location" => final })
+      stub_request(:get, final).to_return(status: 200, body: "PNGDATA")
+      expect(client.send(:fetch_image, url)).to eq("PNGDATA")
+    end
   end
 
   describe "#quit" do

@@ -273,9 +273,21 @@ module ZenDownloader
       puts "#{label} - failed: #{e.message}"
     end
 
+    # Filesystems cap names at 255 bytes; keep the title well under that,
+    # leaving room for the index prefix, suffix and extension.
+    MAX_TITLE_BYTES = 200
+
     def reference_filename(index, title, ref_index, ref_count)
       suffix = ref_count > 1 ? "_#{ref_index + 1}" : ""
-      format("%02d_%s%s.pdf", index, sanitize_filename(title), suffix)
+      title = truncate_bytes(sanitize_filename(title), MAX_TITLE_BYTES)
+      format("%02d_%s%s.pdf", index, title, suffix)
+    end
+
+    # Truncate to at most max_bytes without splitting a multibyte character.
+    def truncate_bytes(str, max_bytes)
+      return str if str.bytesize <= max_bytes
+
+      str.byteslice(0, max_bytes).scrub("")
     end
 
     def sanitize_filename(name)

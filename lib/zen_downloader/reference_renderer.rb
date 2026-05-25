@@ -50,6 +50,8 @@ module ZenDownloader
     # page sized to the image, so print-to-PDF yields one slide per page.
     # images: [{ path:, w:, h: }, ...].
     def self.build_slide_html(images)
+      return "" if images.empty?
+
       w = images.first[:w]
       h = images.first[:h]
 

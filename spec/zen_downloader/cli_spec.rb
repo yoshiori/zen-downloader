@@ -54,5 +54,13 @@ RSpec.describe ZenDownloader::CLI do
       name = cli.send(:reference_filename, 1, "教材", 1, 2)
       expect(name).to eq("01_教材_2.pdf")
     end
+
+    it "truncates an over-long multibyte title without exceeding the byte limit or breaking encoding" do
+      name = cli.send(:reference_filename, 1, "あ" * 300, 0, 1)
+      expect(name.bytesize).to be <= 255
+      expect(name).to be_valid_encoding
+      expect(name).to start_with("01_")
+      expect(name).to end_with(".pdf")
+    end
   end
 end

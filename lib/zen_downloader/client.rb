@@ -12,6 +12,8 @@ module ZenDownloader
     API_URL = "https://api.nnn.ed.nico"
     # Safety cap so a page that never stops growing can't loop forever.
     MAX_LAZY_SCROLLS = 50
+    # Cap on redirect hops when downloading a slide image.
+    MAX_IMAGE_REDIRECTS = 5
 
     def initialize(config)
       @config = config
@@ -336,10 +338,20 @@ module ZenDownloader
       end
     end
 
-    # Download a slide image, failing loudly instead of writing an error
-    # body (e.g. a 403/404 page) to disk and producing a corrupt PDF.
+    # Download a slide image, following redirects and failing loudly instead
+    # of writing an error body (e.g. a 403/404 page) to disk and producing a
+    # corrupt PDF.
     def fetch_image(url)
-      response = Net::HTTP.get_response(URI(url))
+      uri = URI(url)
+      response = nil
+
+      MAX_IMAGE_REDIRECTS.times do
+        response = Net::HTTP.get_response(uri)
+        break unless response.is_a?(Net::HTTPRedirection)
+
+        uri = URI.join(uri, response["location"])
+      end
+
       unless response.is_a?(Net::HTTPSuccess)
         raise Error, "Failed to download image (HTTP #{response.code}): #{url}"
       end
