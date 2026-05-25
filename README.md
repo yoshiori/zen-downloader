@@ -25,10 +25,10 @@ download_dir: ~/Videos/ZEN
 ## Usage
 
 ```bash
-# Download all videos from a course
+# Download videos and reference materials from a course
 ./dl https://www.nnn.ed.nico/courses/COURSE_ID
 
-# Download all videos from a chapter
+# Download videos and reference materials from a chapter
 ./dl https://www.nnn.ed.nico/courses/COURSE_ID/chapters/CHAPTER_ID
 
 # With options
@@ -36,14 +36,15 @@ download_dir: ~/Videos/ZEN
 ./dl -o /path/to/dir https://...  # Custom output directory
 
 # Reference materials (handouts/slides) as PDF
-./dl -r https://...                # Videos + reference PDFs
+./dl --no-references https://...    # Videos only (skip reference PDFs)
 ./dl --references-only https://...  # Reference PDFs only (skip videos)
 ```
 
-Reference materials are saved as PDF alongside the videos. Slide-deck
-references become one slide per page; HTML document references are captured
-via the browser's print-to-PDF. Within a chapter, materials shared by
-multiple sections are downloaded only once.
+Reference materials (handouts/slides) are downloaded as PDF by default,
+alongside the videos. Slide-deck references become one slide per page;
+HTML document references are captured via the browser's print-to-PDF.
+Within a chapter, materials shared by multiple sections are downloaded
+only once.
 
 ## Other Commands
 

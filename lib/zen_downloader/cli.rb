@@ -87,8 +87,8 @@ module ZenDownloader
     desc "download URL", "Download all videos from a chapter or course"
     option :output, aliases: "-o", desc: "Output directory"
     option :parallel, aliases: "-p", type: :numeric, default: 6, desc: "Number of parallel downloads"
-    option :references, aliases: "-r", type: :boolean, default: false,
-                        desc: "Also download lesson/movie reference materials as PDF"
+    option :references, type: :boolean, default: true,
+                        desc: "Download lesson/movie reference materials as PDF (use --no-references to skip)"
     option :references_only, type: :boolean, default: false,
                             desc: "Download only reference PDFs (skip videos)"
     def download(url)

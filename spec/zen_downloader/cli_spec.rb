@@ -32,6 +32,18 @@ RSpec.describe ZenDownloader::CLI do
     end
   end
 
+  describe "download options" do
+    let(:download_options) { described_class.commands["download"].options }
+
+    it "downloads reference materials by default (opt-out via --no-references)" do
+      expect(download_options[:references].default).to be(true)
+    end
+
+    it "does not restrict to references only by default" do
+      expect(download_options[:references_only].default).to be(false)
+    end
+  end
+
   describe "#reference_filename (private)" do
     it "builds an indexed, sanitized PDF name" do
       name = cli.send(:reference_filename, 3, "数字で見る IT革命", 0, 1)
