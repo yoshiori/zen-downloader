@@ -2,6 +2,7 @@
 
 require_relative "zen_downloader/version"
 require_relative "zen_downloader/config"
+require_relative "zen_downloader/reference_renderer"
 require_relative "zen_downloader/client"
 require_relative "zen_downloader/cli"
 

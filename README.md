@@ -34,7 +34,16 @@ download_dir: ~/Videos/ZEN
 # With options
 ./dl -p 4 https://...  # 4 parallel downloads (default: 6)
 ./dl -o /path/to/dir https://...  # Custom output directory
+
+# Reference materials (handouts/slides) as PDF
+./dl -r https://...                # Videos + reference PDFs
+./dl --references-only https://...  # Reference PDFs only (skip videos)
 ```
+
+Reference materials are saved as PDF alongside the videos. Slide-deck
+references become one slide per page; HTML document references are captured
+via the browser's print-to-PDF. Within a chapter, materials shared by
+multiple sections are downloaded only once.
 
 ## Other Commands
 

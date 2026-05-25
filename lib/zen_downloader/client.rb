@@ -3,6 +3,8 @@
 require "ferrum"
 require "fileutils"
 require "json"
+require "net/http"
+require "tmpdir"
 
 module ZenDownloader
   class Client
@@ -79,6 +81,63 @@ module ZenDownloader
 
       data = fetch_api("/v2/material/courses/#{course_id}/chapters/#{chapter_id}/movies/#{movie_id}?revision=1")
       MovieInfo.new(data)
+    end
+
+    def fetch_lesson(course_id, chapter_id, lesson_id)
+      ensure_logged_in
+
+      data = fetch_api("/v1/n_school/courses/#{course_id}/chapters/#{chapter_id}/lessons/#{lesson_id}?revision=1")
+      Lesson.new(data)
+    end
+
+    # Reference material lives in different places depending on section type.
+    def fetch_section_references(course_id, chapter_id, section)
+      case section.resource_type
+      when "movie"
+        fetch_movie_info(course_id, chapter_id, section.id).references
+      when "lesson"
+        fetch_lesson(course_id, chapter_id, section.id).references
+      else
+        []
+      end
+    end
+
+    # Render a reference page to a PDF, picking the strategy that fits the
+    # page (slide deck vs HTML document).
+    #
+    # Returns [result, signature] where result is :slides, :html, or :duplicate.
+    # When the page's content signature is in skip_signatures, rendering is
+    # skipped (the same document is often linked from every section of a
+    # chapter); the caller can collect signatures to dedupe across sections.
+    def render_reference_to_pdf(reference, output_path, skip_signatures: [])
+      ensure_logged_in
+      start_browser
+
+      @browser.go_to(reference.url)
+      wait_for_page_load
+      scroll_to_load_lazy_content
+
+      info = collect_reference_page_info
+      signature = ReferenceRenderer.content_signature(
+        images: info["images"],
+        text_length: info["textLength"]
+      )
+      return [:duplicate, signature] if skip_signatures.include?(signature)
+
+      type = ReferenceRenderer.detect_type(
+        asset_urls: info["assets"],
+        images: info["images"],
+        text_length: info["textLength"]
+      )
+
+      if type == :slides && !info["images"].empty?
+        build_pdf_from_slides(info["images"], output_path)
+      else
+        print_page_to_pdf(output_path)
+        type = :html
+      end
+
+      [type, signature]
     end
 
     def logged_in?
@@ -212,6 +271,71 @@ module ZenDownloader
       # Continue even if network doesn't fully idle
     end
 
+    # Reference pages lazy-load their images; scroll through to force them in.
+    def scroll_to_load_lazy_content
+      12.times do
+        @browser.execute("window.scrollBy(0, window.innerHeight)")
+        sleep 0.3
+      end
+      @browser.execute("window.scrollTo(0, 0)")
+      sleep 0.5
+    rescue StandardError
+      nil
+    end
+
+    # Snapshot the rendered reference page: its asset URLs, the private slide
+    # images (with natural dimensions), and how much body text it carries.
+    def collect_reference_page_info
+      @browser.evaluate(<<~JS)
+        (() => ({
+          assets: Array.from(document.querySelectorAll('script[src],link[href]'))
+                       .map(e => e.src || e.href),
+          images: Array.from(document.querySelectorAll('img'))
+                       .map(i => ({ src: i.currentSrc || i.src, w: i.naturalWidth, h: i.naturalHeight }))
+                       .filter(o => /cdn-private\\.nnn\\.ed\\.nico/.test(o.src)),
+          textLength: document.body.innerText.length
+        }))()
+      JS
+    end
+
+    # Download each slide image and lay them out one-per-page for print-to-PDF.
+    def build_pdf_from_slides(images_info, output_path)
+      Dir.mktmpdir("zen_slides") do |tmp|
+        images = images_info.each_with_index.map do |img, i|
+          path = File.join(tmp, format("%03d.png", i + 1))
+          File.binwrite(path, Net::HTTP.get(URI(img["src"])))
+          { path: path, w: img["w"], h: img["h"] }
+        end
+
+        html_path = File.join(tmp, "slides.html")
+        File.write(html_path, ReferenceRenderer.build_slide_html(images))
+        @browser.go_to("file://#{html_path}")
+        sleep 0.5
+
+        w = images.first[:w]
+        h = images.first[:h]
+        @browser.pdf(
+          path: output_path,
+          paper_width: w / 96.0,
+          paper_height: h / 96.0,
+          margin_top: 0, margin_bottom: 0, margin_left: 0, margin_right: 0,
+          print_background: true,
+          prefer_css_page_size: true
+        )
+      end
+    end
+
+    # Capture the current page as an A4 PDF (for HTML document references).
+    def print_page_to_pdf(output_path)
+      @browser.pdf(
+        path: output_path,
+        paper_width: 8.27,
+        paper_height: 11.69,
+        margin_top: 0.4, margin_bottom: 0.4, margin_left: 0.4, margin_right: 0.4,
+        print_background: true
+      )
+    end
+
     def wait_for_element(selector, timeout: 10)
       start_time = Time.now
       loop do
@@ -287,6 +411,11 @@ module ZenDownloader
     def movies
       @sections.select(&:movie?)
     end
+
+    # Sections whose detail can carry downloadable reference material.
+    def reference_sections
+      @sections.select { |s| %w[movie lesson].include?(s.resource_type) }
+    end
   end
 
   class Section
@@ -313,14 +442,41 @@ module ZenDownloader
     end
   end
 
+  # A single downloadable reference material (slide deck or HTML document).
+  class Reference
+    attr_reader :title, :url
+
+    def initialize(title:, url:)
+      @title = title
+      @url = url
+    end
+  end
+
+  # A "lesson" section (archived live class). Fetched from the n_school API,
+  # which nests everything under a "lesson" key and exposes references as
+  # { "title", "content_url" } entries.
+  class Lesson
+    attr_reader :id, :title, :references
+
+    def initialize(data)
+      lesson = data["lesson"]
+      @id = lesson["id"]
+      @title = lesson["title"]
+      @references = (lesson["references"] || []).map do |ref|
+        Reference.new(title: ref["title"] || @title, url: ref["content_url"])
+      end
+    end
+  end
+
   class MovieInfo
-    attr_reader :id, :title, :length, :hls_url
+    attr_reader :id, :title, :length, :hls_url, :references
 
     def initialize(data)
       @id = data["id"]
       @title = data["title"]
       @length = data["length"]
       @hls_url = extract_hls_url(data)
+      @references = extract_references(data)
     end
 
     def formatted_length
@@ -339,6 +495,14 @@ module ZenDownloader
 
       video = videos.first
       video.dig("files", "hls", "url")
+    end
+
+    # The movie reference schema groups one or more URLs under "content_urls".
+    def extract_references(data)
+      (data["references"] || []).flat_map do |ref|
+        urls = ref["content_urls"] || Array(ref["content_url"])
+        urls.compact.map { |url| Reference.new(title: @title, url: url) }
+      end
     end
   end
 end
