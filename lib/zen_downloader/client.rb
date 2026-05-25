@@ -10,6 +10,8 @@ module ZenDownloader
   class Client
     BASE_URL = "https://www.nnn.ed.nico"
     API_URL = "https://api.nnn.ed.nico"
+    # Safety cap so a page that never stops growing can't loop forever.
+    MAX_LAZY_SCROLLS = 50
 
     def initialize(config)
       @config = config
@@ -271,11 +273,14 @@ module ZenDownloader
       # Continue even if network doesn't fully idle
     end
 
-    # Reference pages lazy-load their images; scroll through to force them in.
+    # Reference pages lazy-load their images; scroll until the page stops
+    # growing so every image is triggered regardless of document length.
     def scroll_to_load_lazy_content
-      12.times do
+      MAX_LAZY_SCROLLS.times do
+        last_y = @browser.evaluate("window.scrollY")
         @browser.execute("window.scrollBy(0, window.innerHeight)")
         sleep 0.3
+        break if @browser.evaluate("window.scrollY") == last_y
       end
       @browser.execute("window.scrollTo(0, 0)")
       sleep 0.5
