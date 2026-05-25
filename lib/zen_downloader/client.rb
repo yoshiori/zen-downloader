@@ -14,6 +14,8 @@ module ZenDownloader
     MAX_LAZY_SCROLLS = 50
     # Cap on redirect hops when downloading a slide image.
     MAX_IMAGE_REDIRECTS = 5
+    # Per-request network timeout (seconds) for image downloads.
+    IMAGE_HTTP_TIMEOUT = 10
 
     def initialize(config)
       @config = config
@@ -346,7 +348,12 @@ module ZenDownloader
       response = nil
 
       MAX_IMAGE_REDIRECTS.times do
-        response = Net::HTTP.get_response(uri)
+        response = Net::HTTP.start(uri.host, uri.port,
+                                   use_ssl: uri.scheme == "https",
+                                   open_timeout: IMAGE_HTTP_TIMEOUT,
+                                   read_timeout: IMAGE_HTTP_TIMEOUT) do |http|
+          http.get(uri.request_uri)
+        end
         break unless response.is_a?(Net::HTTPRedirection)
 
         uri = URI.join(uri, response["location"])
