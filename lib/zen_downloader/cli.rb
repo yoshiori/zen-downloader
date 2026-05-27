@@ -2,6 +2,7 @@
 
 require "thor"
 require "fileutils"
+require "json"
 require "tty-progressbar"
 require "unicode/display_width"
 
@@ -91,6 +92,8 @@ module ZenDownloader
                         desc: "Download lesson/movie reference materials as PDF (use --no-references to skip)"
     option :references_only, type: :boolean, default: false,
                             desc: "Download only reference PDFs (skip videos)"
+    option :exercises, type: :boolean, default: true,
+                       desc: "Save confirmation exercises/reports as JSON (use --no-exercises to skip)"
     def download(url)
       config = Config.new
       client = Client.new(config)
@@ -180,9 +183,12 @@ module ZenDownloader
       puts "Output: #{chapter_dir}"
 
       download_videos(client, chapter, chapter_dir, parallel_count) unless options[:references_only]
-      return unless options[:references] || options[:references_only]
 
-      download_references(client, course_id, chapter_id, chapter, chapter_dir)
+      if options[:references] || options[:references_only]
+        download_references(client, course_id, chapter_id, chapter, chapter_dir)
+      end
+
+      download_exercises(client, chapter, chapter_dir) if options[:exercises]
     end
 
     def download_videos(client, chapter, chapter_dir, parallel_count)
@@ -271,6 +277,35 @@ module ZenDownloader
       puts "#{label} - saved #{filename} (#{result})"
     rescue StandardError => e
       puts "#{label} - failed: #{e.message}"
+    end
+
+    def download_exercises(client, chapter, chapter_dir)
+      sections = chapter.exercise_sections
+      if sections.empty?
+        puts "No confirmation exercises found."
+        return
+      end
+
+      puts "Saving confirmation exercises as JSON..."
+      sections.each_with_index do |section, i|
+        label = "[#{i + 1}/#{sections.length}] #{section.title}"
+        title = truncate_bytes(sanitize_filename(section.title), MAX_TITLE_BYTES)
+        filename = format("%02d_%s.json", i + 1, title)
+        output_path = File.join(chapter_dir, filename)
+
+        if File.exist?(output_path)
+          puts "#{label} - #{filename} already exists, skipping..."
+          next
+        end
+
+        begin
+          exercise = client.fetch_exercise(section)
+          File.write(output_path, JSON.pretty_generate(exercise.to_h))
+          puts "#{label} - saved #{filename}"
+        rescue StandardError => e
+          puts "#{label} - failed: #{e.message}"
+        end
+      end
     end
 
     # Filesystems cap names at 255 bytes; keep the title well under that,

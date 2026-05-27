@@ -102,6 +102,68 @@ module ZenDownloader
       end
     end
 
+    # Exercise / report content is server-rendered into the page at
+    # section.content_url (no JSON API is exposed for it). We navigate to the
+    # page and pull the kokuban-init JSON plus the SSR'd question DOM.
+    def fetch_exercise(section)
+      ensure_logged_in
+      start_browser
+      @browser.go_to(section.content_url)
+      wait_for_page_load
+
+      data = @browser.evaluate(<<~JS)
+        (() => {
+          const initEl = document.getElementById('kokuban-init');
+          const init = initEl ? JSON.parse(initEl.textContent) : null;
+          const statementEl = document.querySelector('section.exercise > div.statement');
+          const items = Array.from(document.querySelectorAll('section.exercise > ul > li.exercise-item')).map(li => {
+            const type = li.dataset.type || null;
+            const badgeEl = li.querySelector('.shoumon-badge');
+            const badge = badgeEl ? (badgeEl.getAttribute('data-testid') || null) : null;
+
+            // The form-field name carries the question id. For 'word' (text)
+            // and 'essay' (textarea) types the id only lives in kokuban-init,
+            // so we fall back to that when the SSR'd input has no name.
+            const nameInput = li.querySelector('input[name], textarea[name]');
+            const id = nameInput ? nameInput.getAttribute('name') : null;
+
+            const choices = Array.from(li.querySelectorAll('.choice-options__option')).map(opt => {
+              const input = opt.querySelector('input');
+              const label = opt.querySelector('.choice-options__option__value');
+              return {
+                value: input ? input.getAttribute('value') : null,
+                text: label ? label.innerText.trim() : null,
+                html: label ? label.innerHTML.trim() : null
+              };
+            });
+
+            const textarea = li.querySelector('textarea');
+            const textInput = li.querySelector('input[type="text"].answers');
+            const explanationEl = li.querySelector('div.explanation');
+
+            return {
+              id: id,
+              type: type,
+              badge: badge,
+              choices: choices,
+              textarea_value: textarea ? textarea.value : null,
+              text_input_value: textInput ? textInput.getAttribute('value') : null,
+              explanation_text: explanationEl ? explanationEl.innerText.trim() : null,
+              explanation_html: explanationEl ? explanationEl.innerHTML.trim() : null
+            };
+          });
+          return {
+            init: init,
+            statement_text: statementEl ? statementEl.innerText.trim() : null,
+            statement_html: statementEl ? statementEl.innerHTML.trim() : null,
+            items: items
+          };
+        })()
+      JS
+
+      Exercise.new(section: section, page_data: data)
+    end
+
     # Reference material lives in different places depending on section type.
     def fetch_section_references(course_id, chapter_id, section)
       case section.resource_type
@@ -462,6 +524,12 @@ module ZenDownloader
     def reference_sections
       @sections.select { |s| %w[movie lesson].include?(s.resource_type) }
     end
+
+    # Sections that hold a confirmation exercise or report (which we save as
+    # JSON alongside the videos and reference PDFs).
+    def exercise_sections
+      @sections.select { |s| %w[exercise report].include?(s.resource_type) }
+    end
   end
 
   class Section
@@ -510,6 +578,81 @@ module ZenDownloader
       @title = lesson["title"]
       @references = (lesson["references"] || []).map do |ref|
         Reference.new(title: ref["title"] || @title, url: ref["content_url"])
+      end
+    end
+  end
+
+  # An exercise (確認テスト) or report (確認レポート). Both share the same
+  # SSR'd page structure: a kokuban-init script tag (metadata + user answers)
+  # plus a section.exercise block containing statement, choices and any
+  # explanation.
+  class Exercise
+    attr_reader :section, :init, :statement_text, :statement_html, :questions
+
+    def initialize(section:, page_data:)
+      @section = section
+      @init = page_data["init"] || {}
+      @statement_text = page_data["statement_text"]
+      @statement_html = page_data["statement_html"]
+      @questions = build_questions(page_data["items"] || [])
+    end
+
+    def material_meta
+      @init["materialMeta"] || {}
+    end
+
+    def learning_material_code
+      material_meta["learningMaterialCode"]
+    end
+
+    def material_type
+      material_meta["type"]
+    end
+
+    def title
+      material_meta["title"] || @section.title
+    end
+
+    def to_h
+      {
+        "id" => @section.id,
+        "title" => @section.title,
+        "resource_type" => @section.resource_type,
+        "material_type" => material_type,
+        "learning_material_code" => learning_material_code,
+        "url" => @section.content_url,
+        "passed" => @init.dig("userContext", "passed"),
+        "history" => @init.dig("userContext", "history"),
+        "statement_text" => @statement_text,
+        "statement_html" => @statement_html,
+        "questions" => @questions
+      }
+    end
+
+    private
+
+    def build_questions(items)
+      answers = @init.dig("userContext", "answers") || {}
+      answer_pairs = answers.to_a # ordered: [[id, {answering, isCorrect}], ...]
+
+      items.each_with_index.map do |item, idx|
+        id = item["id"] || answer_pairs.dig(idx, 0)
+        answer = answers[id] || answer_pairs.dig(idx, 1) || {}
+        user_answer = case item["type"]
+                      when "essay" then item["textarea_value"] || answer["answering"]
+                      when "word"  then item["text_input_value"] || answer["answering"]
+                      else answer["answering"]
+                      end
+        {
+          "id" => id,
+          "type" => item["type"],
+          "badge" => item["badge"],
+          "is_correct" => answer["isCorrect"],
+          "user_answer" => user_answer,
+          "choices" => item["choices"] || [],
+          "explanation_text" => item["explanation_text"],
+          "explanation_html" => item["explanation_html"]
+        }
       end
     end
   end

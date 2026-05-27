@@ -42,6 +42,10 @@ RSpec.describe ZenDownloader::CLI do
     it "does not restrict to references only by default" do
       expect(download_options[:references_only].default).to be(false)
     end
+
+    it "saves confirmation exercises by default (opt-out via --no-exercises)" do
+      expect(download_options[:exercises].default).to be(true)
+    end
   end
 
   describe "#reference_filename (private)" do
