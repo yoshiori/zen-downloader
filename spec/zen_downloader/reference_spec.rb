@@ -109,4 +109,12 @@ RSpec.describe ZenDownloader::Chapter do
       expect(types).to eq(%w[movie lesson])
     end
   end
+
+  describe "#exercise_sections" do
+    it "returns only exercise and report sections (which carry confirmation questions)" do
+      chapter = described_class.new(data, "course1", "コース")
+      types = chapter.exercise_sections.map(&:resource_type)
+      expect(types).to eq(%w[exercise report])
+    end
+  end
 end

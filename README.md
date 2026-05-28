@@ -25,10 +25,10 @@ download_dir: ~/Videos/ZEN
 ## Usage
 
 ```bash
-# Download videos and reference materials from a course
+# Download videos, reference materials and confirmation exercises from a course
 ./dl https://www.nnn.ed.nico/courses/COURSE_ID
 
-# Download videos and reference materials from a chapter
+# ... or just from a single chapter
 ./dl https://www.nnn.ed.nico/courses/COURSE_ID/chapters/CHAPTER_ID
 
 # With options
@@ -38,6 +38,9 @@ download_dir: ~/Videos/ZEN
 # Reference materials (handouts/slides) as PDF
 ./dl --no-references https://...    # Videos only (skip reference PDFs)
 ./dl --references-only https://...  # Reference PDFs only (skip videos)
+
+# Confirmation exercises / reports as JSON
+./dl --no-exercises https://...     # Skip the exercise/report JSON dump
 ```
 
 Reference materials (handouts/slides) are downloaded as PDF by default,
@@ -45,6 +48,11 @@ alongside the videos. Slide-deck references become one slide per page;
 HTML document references are captured via the browser's print-to-PDF.
 Within a chapter, materials shared by multiple sections are downloaded
 only once.
+
+Confirmation exercises (確認テスト) and reports (確認レポート) are saved as
+`NN_<title>.json` next to the videos. Each file captures the question
+statement, choices, the user's submitted answer, correctness and any
+explanation that ZEN renders for review.
 
 ## Other Commands
 
