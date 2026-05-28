@@ -643,7 +643,12 @@ module ZenDownloader
 
       items.each_with_index.map do |item, idx|
         id = item["id"] || answer_pairs.dig(idx, 0)
-        answer = answers[id] || answer_pairs.dig(idx, 1) || {}
+        # Look the answer up strictly by id. Don't fall back to the idx-th
+        # answer: an unanswered question carries an id that isn't in `answers`,
+        # and the index fallback would mis-attribute another question's answer.
+        # (When id itself came from answer_pairs[idx][0], answers[id] already
+        # equals answer_pairs[idx][1], so no fallback is needed.)
+        answer = answers[id] || {}
         # Empty strings are truthy in Ruby, so we can't use `||` here: an empty
         # SSR'd textarea/input would otherwise mask the submitted answer that
         # kokuban-init carries.

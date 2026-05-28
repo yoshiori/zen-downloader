@@ -206,4 +206,40 @@ RSpec.describe ZenDownloader::Exercise do
       expect(q["user_answer"]).to eq("0.48")
     end
   end
+
+  # A question can carry its own id while the user hasn't answered it yet, so
+  # that id is absent from kokuban-init.answers. We must not borrow another
+  # question's answer by index in that case. The unanswered question sits at
+  # the same index as an *answered* question's entry in the answers hash, so a
+  # naive index fallback would mis-attribute that answer.
+  describe "with an unanswered question whose id is not in kokuban-init answers" do
+    let(:page_data) do
+      {
+        "init" => {
+          "userContext" => {
+            "answers" => { "qid-2" => { "answering" => "回答済み", "isCorrect" => true } }
+          }
+        },
+        "items" => [
+          {
+            "id" => "qid-1", "type" => "normal", "choices" => [],
+            "textarea_value" => nil, "text_input_value" => nil
+          },
+          {
+            "id" => "qid-2", "type" => "normal", "choices" => [],
+            "textarea_value" => nil, "text_input_value" => nil
+          }
+        ]
+      }
+    end
+
+    it "leaves the unanswered question blank instead of borrowing another answer" do
+      questions = described_class.new(section: section, page_data: page_data).questions
+      expect(questions[0]["id"]).to eq("qid-1")
+      expect(questions[0]["user_answer"]).to be_nil
+      expect(questions[0]["is_correct"]).to be_nil
+      expect(questions[1]["id"]).to eq("qid-2")
+      expect(questions[1]["user_answer"]).to eq("回答済み")
+    end
+  end
 end
