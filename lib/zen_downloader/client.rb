@@ -591,6 +591,7 @@ module ZenDownloader
 
     def initialize(section:, page_data:)
       @section = section
+      page_data ||= {}
       @init = page_data["init"] || {}
       @statement_text = page_data["statement_text"]
       @statement_html = page_data["statement_html"]
@@ -632,9 +633,7 @@ module ZenDownloader
     private
 
     def presence(value)
-      return nil if value.nil?
-      return nil if value.respond_to?(:empty?) && value.empty?
-      value
+      value unless value.nil? || (value.respond_to?(:empty?) && value.empty?)
     end
 
     def build_questions(items)

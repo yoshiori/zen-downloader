@@ -242,4 +242,15 @@ RSpec.describe ZenDownloader::Exercise do
       expect(questions[1]["user_answer"]).to eq("回答済み")
     end
   end
+
+  # @browser.evaluate can return nil if the page never loads or the script
+  # times out; constructing an Exercise from that must not blow up.
+  describe "with nil page_data" do
+    it "constructs an empty exercise without raising" do
+      exercise = described_class.new(section: section, page_data: nil)
+      expect(exercise.questions).to eq([])
+      expect(exercise.statement_text).to be_nil
+      expect(exercise.to_h["questions"]).to eq([])
+    end
+  end
 end
