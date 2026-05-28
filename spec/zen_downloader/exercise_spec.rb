@@ -162,4 +162,48 @@ RSpec.describe ZenDownloader::Exercise do
       expect(hash["material_type"]).to eq("essay_reports")
     end
   end
+
+  # If the SSR'd textarea/input is present but empty, we should still surface
+  # the submitted answer from kokuban-init. Empty strings are truthy in Ruby,
+  # so a naive `||` fallback would incorrectly keep "" and drop the answer.
+  describe "when the SSR'd form value is an empty string" do
+    let(:report_section) do
+      ZenDownloader::Section.new(
+        "id" => 7,
+        "title" => "確認レポート",
+        "resource_type" => "report",
+        "content_url" => "https://www.nnn.ed.nico/contents/courses/1/chapters/2/reports/3/result?content_type=zen_univ"
+      )
+    end
+
+    it "falls back to kokuban-init for an empty essay textarea" do
+      page_data = {
+        "init" => {
+          "userContext" => {
+            "answers" => { "essay-id" => { "answering" => "提出済みの回答" } }
+          }
+        },
+        "items" => [
+          { "id" => nil, "type" => "essay", "choices" => [], "textarea_value" => "", "text_input_value" => nil }
+        ]
+      }
+      q = described_class.new(section: report_section, page_data: page_data).questions.first
+      expect(q["user_answer"]).to eq("提出済みの回答")
+    end
+
+    it "falls back to kokuban-init for an empty word text input" do
+      page_data = {
+        "init" => {
+          "userContext" => {
+            "answers" => { "word-id" => { "answering" => "0.48" } }
+          }
+        },
+        "items" => [
+          { "id" => nil, "type" => "word", "choices" => [], "textarea_value" => nil, "text_input_value" => "" }
+        ]
+      }
+      q = described_class.new(section: report_section, page_data: page_data).questions.first
+      expect(q["user_answer"]).to eq("0.48")
+    end
+  end
 end

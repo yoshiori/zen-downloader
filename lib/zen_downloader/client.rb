@@ -147,7 +147,7 @@ module ZenDownloader
               badge: badge,
               choices: choices,
               textarea_value: textarea ? textarea.value : null,
-              text_input_value: textInput ? textInput.getAttribute('value') : null,
+              text_input_value: textInput ? textInput.value : null,
               explanation_text: explanationEl ? explanationEl.innerText.trim() : null,
               explanation_html: explanationEl ? explanationEl.innerHTML.trim() : null
             };
@@ -631,6 +631,12 @@ module ZenDownloader
 
     private
 
+    def presence(value)
+      return nil if value.nil?
+      return nil if value.respond_to?(:empty?) && value.empty?
+      value
+    end
+
     def build_questions(items)
       answers = @init.dig("userContext", "answers") || {}
       answer_pairs = answers.to_a # ordered: [[id, {answering, isCorrect}], ...]
@@ -638,9 +644,12 @@ module ZenDownloader
       items.each_with_index.map do |item, idx|
         id = item["id"] || answer_pairs.dig(idx, 0)
         answer = answers[id] || answer_pairs.dig(idx, 1) || {}
+        # Empty strings are truthy in Ruby, so we can't use `||` here: an empty
+        # SSR'd textarea/input would otherwise mask the submitted answer that
+        # kokuban-init carries.
         user_answer = case item["type"]
-                      when "essay" then item["textarea_value"] || answer["answering"]
-                      when "word"  then item["text_input_value"] || answer["answering"]
+                      when "essay" then presence(item["textarea_value"]) || answer["answering"]
+                      when "word"  then presence(item["text_input_value"]) || answer["answering"]
                       else answer["answering"]
                       end
         {
