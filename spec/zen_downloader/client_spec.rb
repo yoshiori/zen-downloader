@@ -96,6 +96,46 @@ RSpec.describe ZenDownloader::Client do
     end
   end
 
+  # Chrome aborts a navigation with ERR_NETWORK_CHANGED when network
+  # interfaces come and go (e.g. Docker containers starting); a retry passes.
+  describe "navigation retry on network change" do
+    let(:target_url) { "https://www.nnn.ed.nico/courses/1234" }
+    let(:network_changed) { Ferrum::StatusError.new(target_url, "net::ERR_NETWORK_CHANGED") }
+
+    before do
+      allow(client).to receive(:logged_in?).and_return(true)
+      allow(client).to receive(:sleep)
+    end
+
+    it "retries and succeeds when the network changed during navigation" do
+      calls = 0
+      allow(mock_browser).to receive(:go_to) do
+        calls += 1
+        raise network_changed if calls == 1
+      end
+
+      client.fetch_page(target_url)
+
+      expect(mock_browser).to have_received(:go_to).with(target_url).twice
+    end
+
+    it "gives up after the retry limit" do
+      allow(mock_browser).to receive(:go_to).and_raise(network_changed)
+
+      expect { client.fetch_page(target_url) }.to raise_error(Ferrum::StatusError)
+      expect(mock_browser).to have_received(:go_to)
+        .exactly(ZenDownloader::Client::NAVIGATION_ATTEMPTS).times
+    end
+
+    it "does not retry other navigation errors" do
+      allow(mock_browser).to receive(:go_to)
+        .and_raise(Ferrum::StatusError.new(target_url, "net::ERR_NAME_NOT_RESOLVED"))
+
+      expect { client.fetch_page(target_url) }.to raise_error(Ferrum::StatusError)
+      expect(mock_browser).to have_received(:go_to).once
+    end
+  end
+
   describe "#fetch_page" do
     let(:target_url) { "https://www.nnn.ed.nico/courses/1234/chapters/5678" }
 
