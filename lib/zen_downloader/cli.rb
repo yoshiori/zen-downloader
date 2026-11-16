@@ -198,7 +198,12 @@ module ZenDownloader
       # Prepare download tasks
       tasks = []
       chapter.movies.each_with_index do |movie, i|
-        movie_info = client.fetch_movie_info(course_id, chapter_id, movie.id)
+        begin
+          movie_info = client.fetch_movie_info(course_id, chapter_id, movie.id)
+        rescue SectionLockedError
+          puts "[#{i + 1}/#{chapter.movies.length}] #{movie.title} - #{LOCKED_SKIP_MESSAGE}"
+          next
+        end
 
         unless movie_info.hls_url
           puts "[#{i + 1}/#{chapter.movies.length}] #{movie.title} - No HLS URL, skipping..."
@@ -244,8 +249,13 @@ module ZenDownloader
       puts "Downloading reference materials..."
       seen_signatures = []
       sections.each_with_index do |section, i|
-        references = client.fetch_section_references(course_id, chapter_id, section)
         label = "[#{i + 1}/#{sections.length}] #{section.title}"
+        begin
+          references = client.fetch_section_references(course_id, chapter_id, section)
+        rescue SectionLockedError
+          puts "#{label} - #{LOCKED_SKIP_MESSAGE}"
+          next
+        end
 
         if references.empty?
           puts "#{label} - No references, skipping..."
@@ -300,6 +310,11 @@ module ZenDownloader
 
         begin
           exercise = client.fetch_exercise(section)
+          if exercise.empty?
+            puts "#{label} - No content yet (locked or not attempted), skipping..."
+            next
+          end
+
           File.write(output_path, JSON.pretty_generate(exercise.to_h))
           puts "#{label} - saved #{filename}"
         rescue StandardError => e
@@ -311,6 +326,8 @@ module ZenDownloader
     # Filesystems cap names at 255 bytes; keep the title well under that,
     # leaving room for the index prefix, suffix and extension.
     MAX_TITLE_BYTES = 200
+
+    LOCKED_SKIP_MESSAGE = "Not unlocked yet, skipping (finish the earlier sections first)..."
 
     def reference_filename(index, title, ref_index, ref_count)
       suffix = ref_count > 1 ? "_#{ref_index + 1}" : ""

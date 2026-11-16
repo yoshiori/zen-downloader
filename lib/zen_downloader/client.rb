@@ -16,6 +16,9 @@ module ZenDownloader
     MAX_IMAGE_REDIRECTS = 5
     # Per-request network timeout (seconds) for image downloads.
     IMAGE_HTTP_TIMEOUT = 10
+    # The API answers 403 with this message for a section that is not unlocked
+    # yet; the same 403 code is also used for "please log in".
+    SECTION_LOCKED_MESSAGE = "セクションのゲートが開放されていません"
 
     def initialize(config)
       @config = config
@@ -308,20 +311,27 @@ module ZenDownloader
         .catch(err => arguments[0]({error: err.message}));
       ), 15)
 
-      raise Error, "API error: #{result['error']}" if result.is_a?(Hash) && result["error"]
+      raise_api_error(result["error"]) if result.is_a?(Hash) && result["error"]
 
       result
     end
 
-# The API only sees the session cookies when fetch runs from a page on the
-# site. Building slide PDFs leaves the browser on a file:// page, and an API
-# call from there is rejected with 403 "please log in".
-def return_to_site
-  return if @browser.current_url.to_s.start_with?(BASE_URL)
+    def raise_api_error(error)
+      message = "API error: #{error}"
+      raise SectionLockedError, message if error.is_a?(Hash) && error["message"] == SECTION_LOCKED_MESSAGE
 
-  @browser.go_to(BASE_URL)
-  wait_for_page_load
-end
+      raise Error, message
+    end
+
+    # The API only sees the session cookies when fetch runs from a page on the
+    # site. Building slide PDFs leaves the browser on a file:// page, and an API
+    # call from there is rejected with 403 "please log in".
+    def return_to_site
+      return if @browser.current_url.to_s.start_with?(BASE_URL)
+
+      @browser.go_to(BASE_URL)
+      wait_for_page_load
+    end
 
     def start_browser
       return if @browser
@@ -623,6 +633,10 @@ end
 
     def title
       material_meta["title"] || @section.title
+    end
+
+    def empty?
+      @statement_text.nil? && @statement_html.nil? && @questions.empty?
     end
 
     def to_h
