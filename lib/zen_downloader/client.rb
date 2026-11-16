@@ -297,6 +297,7 @@ module ZenDownloader
 
     def fetch_api(path)
       start_browser
+      return_to_site
 
       result = @browser.evaluate_async(%(
         fetch("#{API_URL}#{path}", {
@@ -311,6 +312,16 @@ module ZenDownloader
 
       result
     end
+
+# The API only sees the session cookies when fetch runs from a page on the
+# site. Building slide PDFs leaves the browser on a file:// page, and an API
+# call from there is rejected with 403 "please log in".
+def return_to_site
+  return if @browser.current_url.to_s.start_with?(BASE_URL)
+
+  @browser.go_to(BASE_URL)
+  wait_for_page_load
+end
 
     def start_browser
       return if @browser
