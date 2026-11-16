@@ -198,32 +198,32 @@ RSpec.describe ZenDownloader::Client do
     end
   end
 
-# API calls rely on the site cookies, which the browser only sends when the
-# fetch runs from a page on the site (not e.g. a file:// slide page).
-describe "API calls after the browser left the site" do
-  let(:course_data) { { "course" => { "id" => "1", "title" => "T", "chapters" => [] } } }
+  # API calls rely on the site cookies, which the browser only sends when the
+  # fetch runs from a page on the site (not e.g. a file:// slide page).
+  describe "API calls after the browser left the site" do
+    let(:course_data) { { "course" => { "id" => "1", "title" => "T", "chapters" => [] } } }
 
-  before do
-    allow(client).to receive(:logged_in?).and_return(true)
-    allow(mock_browser).to receive(:evaluate_async).and_return(course_data)
-    allow(mock_browser).to receive(:go_to)
+    before do
+      allow(client).to receive(:logged_in?).and_return(true)
+      allow(mock_browser).to receive(:evaluate_async).and_return(course_data)
+      allow(mock_browser).to receive(:go_to)
+    end
+
+    it "returns to the site before calling the API" do
+      allow(mock_browser).to receive(:current_url).and_return("file:///tmp/zen_slides/slides.html")
+
+      client.fetch_course("1")
+
+      expect(mock_browser).to have_received(:go_to).with(ZenDownloader::Client::BASE_URL).ordered
+      expect(mock_browser).to have_received(:evaluate_async).ordered
+    end
+
+    it "does not navigate when already on the site" do
+      client.fetch_course("1")
+
+      expect(mock_browser).not_to have_received(:go_to)
+    end
   end
-
-  it "returns to the site before calling the API" do
-    allow(mock_browser).to receive(:current_url).and_return("file:///tmp/zen_slides/slides.html")
-
-    client.fetch_course("1")
-
-    expect(mock_browser).to have_received(:go_to).with(ZenDownloader::Client::BASE_URL).ordered
-    expect(mock_browser).to have_received(:evaluate_async).ordered
-  end
-
-  it "does not navigate when already on the site" do
-    client.fetch_course("1")
-
-    expect(mock_browser).not_to have_received(:go_to)
-  end
-end
 
   describe "#fetch_movie_info caching" do
     let(:movie_id) { "999" }
