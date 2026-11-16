@@ -19,6 +19,11 @@ module ZenDownloader
     # The API answers 403 with this message for a section that is not unlocked
     # yet; the same 403 code is also used for "please log in".
     SECTION_LOCKED_MESSAGE = "セクションのゲートが開放されていません"
+    # Chrome aborts a navigation with this error when network interfaces come
+    # and go (e.g. Docker containers starting); the next attempt usually passes.
+    NETWORK_CHANGED_ERROR = "ERR_NETWORK_CHANGED"
+    NAVIGATION_ATTEMPTS = 3
+    NAVIGATION_RETRY_WAIT = 2
 
     def initialize(config)
       @config = config
@@ -30,7 +35,7 @@ module ZenDownloader
       start_browser
 
       # Step 1: Access ZEN ID login page directly
-      @browser.go_to("#{BASE_URL}/auth/zen_id")
+      navigate("#{BASE_URL}/auth/zen_id")
       wait_for_page_load
 
       # Step 2: Submit email (first step of Auth0 Universal Login)
@@ -111,7 +116,7 @@ module ZenDownloader
     def fetch_exercise(section)
       ensure_logged_in
       start_browser
-      @browser.go_to(section.content_url)
+      navigate(section.content_url)
       wait_for_page_load
 
       data = @browser.evaluate(<<~JS)
@@ -190,7 +195,7 @@ module ZenDownloader
       ensure_logged_in
       start_browser
 
-      @browser.go_to(reference.url)
+      navigate(reference.url)
       wait_for_page_load
       scroll_to_load_lazy_content
 
@@ -279,7 +284,7 @@ module ZenDownloader
     def session_valid?
       start_browser
       load_cookies
-      @browser.go_to(BASE_URL)
+      navigate(BASE_URL)
       wait_for_page_load
 
       # Try to fetch user info - if it succeeds, session is valid
@@ -329,7 +334,7 @@ module ZenDownloader
     def return_to_site
       return if @browser.current_url.to_s.start_with?(BASE_URL)
 
-      @browser.go_to(BASE_URL)
+      navigate(BASE_URL)
       wait_for_page_load
     end
 
@@ -354,9 +359,23 @@ module ZenDownloader
 
     def get_page(url)
       start_browser
-      @browser.go_to(url)
+      navigate(url)
       wait_for_page_load
       current_page
+    end
+
+    def navigate(url)
+      attempts = 0
+      begin
+        attempts += 1
+        @browser.go_to(url)
+      rescue Ferrum::StatusError => e
+        raise unless e.message.include?(NETWORK_CHANGED_ERROR) && attempts < NAVIGATION_ATTEMPTS
+
+        warn "Network changed while opening #{url}; retrying (#{attempts}/#{NAVIGATION_ATTEMPTS - 1})..."
+        sleep NAVIGATION_RETRY_WAIT
+        retry
+      end
     end
 
     def wait_for_page_load
@@ -409,7 +428,7 @@ module ZenDownloader
 
         html_path = File.join(tmp, "slides.html")
         File.write(html_path, ReferenceRenderer.build_slide_html(images))
-        @browser.go_to("file://#{html_path}")
+        navigate("file://#{html_path}")
         sleep 0.5
 
         w = images.first[:w]
