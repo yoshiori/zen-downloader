@@ -253,4 +253,17 @@ RSpec.describe ZenDownloader::Exercise do
       expect(exercise.to_h["questions"]).to eq([])
     end
   end
+
+  # A locked or not-yet-attempted exercise renders no statement or questions.
+  describe "#empty?" do
+    it "is true when the page had no statement and no questions" do
+      exercise = described_class.new(section: section, page_data: { "init" => {}, "items" => [] })
+      expect(exercise).to be_empty
+    end
+
+    it "is false when the page had a statement" do
+      exercise = described_class.new(section: section, page_data: { "statement_text" => "問題文", "items" => [] })
+      expect(exercise).not_to be_empty
+    end
+  end
 end

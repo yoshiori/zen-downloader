@@ -9,4 +9,6 @@ require_relative "zen_downloader/cli"
 module ZenDownloader
   class Error < StandardError; end
   class AuthenticationError < Error; end
+  # The section is gated until earlier sections of the chapter are completed.
+  class SectionLockedError < Error; end
 end

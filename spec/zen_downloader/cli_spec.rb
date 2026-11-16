@@ -67,4 +67,59 @@ RSpec.describe ZenDownloader::CLI do
       expect(name).to end_with(".pdf")
     end
   end
+
+  # Later sections of a chapter stay locked until the earlier ones are done;
+  # one locked section must not abort the whole download.
+  describe "locked sections" do
+    let(:client) { instance_double(ZenDownloader::Client) }
+    let(:chapter) do
+      ZenDownloader::Chapter.new(
+        { "chapter" => { "id" => "ch", "title" => "Ch", "sections" => [
+          { "id" => "m1", "title" => "Open", "resource_type" => "movie" },
+          { "id" => "m2", "title" => "Locked", "resource_type" => "movie" }
+        ] } },
+        "c"
+      )
+    end
+    let(:open_section) { chapter.sections[0] }
+    let(:locked_section) { chapter.sections[1] }
+
+    it "skips a locked video and keeps going" do
+      allow(client).to receive(:fetch_movie_info).with("c", "ch", "m1")
+        .and_return(instance_double(ZenDownloader::MovieInfo, hls_url: nil))
+      allow(client).to receive(:fetch_movie_info).with("c", "ch", "m2")
+        .and_raise(ZenDownloader::SectionLockedError, "locked")
+
+      expect { cli.send(:download_videos, client, chapter, Dir.tmpdir, 1) }
+        .to output(/Locked - Not unlocked yet, skipping/).to_stdout
+    end
+
+    it "skips a locked section when collecting reference materials" do
+      allow(client).to receive(:fetch_section_references).with("c", "ch", open_section).and_return([])
+      allow(client).to receive(:fetch_section_references).with("c", "ch", locked_section)
+        .and_raise(ZenDownloader::SectionLockedError, "locked")
+
+      expect { cli.send(:download_references, client, "c", "ch", chapter, Dir.tmpdir) }
+        .to output(/Locked - Not unlocked yet, skipping/).to_stdout
+    end
+
+    # Writing an empty file would make later runs skip it as "already exists"
+    # even after the exercise is unlocked and answered.
+    it "does not save an exercise whose page has no content" do
+      exercise_chapter = ZenDownloader::Chapter.new(
+        { "chapter" => { "id" => "ch", "title" => "Ch", "sections" => [
+          { "id" => "e1", "title" => "Quiz", "resource_type" => "exercise" }
+        ] } },
+        "c"
+      )
+      allow(client).to receive(:fetch_exercise)
+        .and_return(instance_double(ZenDownloader::Exercise, empty?: true))
+
+      Dir.mktmpdir do |dir|
+        expect { cli.send(:download_exercises, client, exercise_chapter, dir) }
+          .to output(/Quiz - No content yet/).to_stdout
+        expect(Dir.children(dir)).to be_empty
+      end
+    end
+  end
 end

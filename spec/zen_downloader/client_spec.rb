@@ -225,6 +225,28 @@ RSpec.describe ZenDownloader::Client do
     end
   end
 
+  describe "API errors" do
+    before { allow(client).to receive(:logged_in?).and_return(true) }
+
+    it "raises SectionLockedError when the section gate is not open yet" do
+      allow(mock_browser).to receive(:evaluate_async).and_return(
+        { "error" => { "code" => 403, "message" => "セクションのゲートが開放されていません" } }
+      )
+
+      expect { client.fetch_movie_info("c", "ch", "m") }
+        .to raise_error(ZenDownloader::SectionLockedError)
+    end
+
+    it "raises a plain Error for other API errors" do
+      allow(mock_browser).to receive(:evaluate_async).and_return(
+        { "error" => { "code" => 403, "message" => "アカウントにログインしてください" } }
+      )
+
+      expect { client.fetch_movie_info("c", "ch", "m") }
+        .to raise_error(ZenDownloader::Error) { |e| expect(e).not_to be_a(ZenDownloader::SectionLockedError) }
+    end
+  end
+
   describe "#fetch_movie_info caching" do
     let(:movie_id) { "999" }
     let(:movie_data) { { "id" => movie_id, "title" => "M", "videos" => [], "references" => [] } }
